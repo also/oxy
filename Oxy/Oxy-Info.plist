@@ -24,7 +24,10 @@
 	<string>1</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>Copyright © 2013 Ryan Berdeen. All rights reserved.</string>
-	<key>OSBundleLibraries</key>
-	<dict/>
+    <key>OSBundleLibraries</key>
+    <dict>
+        <key>com.apple.kpi.libkern</key>
+        <string>10.0</string>
+    </dict>
 </dict>
 </plist>
