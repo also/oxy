@@ -45,6 +45,11 @@ struct ctl_connection {
     struct outbound_connection out_msg;
 };
 
+struct connection {
+    TAILQ_ENTRY(connection) link;
+    lck_mtx_t *mutex;
+};
+
 static struct ctl_connection g_ctl_connection = {
     NULL,
     NULL
@@ -56,10 +61,29 @@ static void oxy_unregistered_func(sflt_handle handle) {
 }
 
 static errno_t oxy_attach_func(void **cookie, socket_t so) {
+    struct connection *conn = (struct connection *)OSMalloc(sizeof (struct connection), global_malloc_tag);
+    if (conn == NULL) {
+        return ENOBUFS;
+    }
+    conn->mutex = lck_mtx_alloc_init(g_mutex_grp, LCK_ATTR_NULL);
+    if (conn->mutex == NULL) {
+        OSFree(conn, sizeof(struct connection), global_malloc_tag);
+        return ENOMEM;
+    }
+    *cookie = conn;
     return 0;
 }
 
 static void oxy_detach_func(void *cookie, socket_t so) {
+    struct connection *conn = cookie;
+    
+    if (!conn) {
+        // is this possible?
+        return;
+    }
+    
+    lck_mtx_free(conn->mutex, g_mutex_grp);
+    OSFree(conn, sizeof(struct connection), global_malloc_tag);
 }
 
 static void oxy_notify_func(void *cookie, socket_t so, sflt_event_t event, void *param) {
@@ -72,6 +96,11 @@ static errno_t oxy_connect_out_func(void *cookie,
     printf("Oxy oxy_connect_out_func!\n");
     unsigned char name[256];
     unsigned char addstr[256];
+    
+    struct connection *conn = cookie;
+    
+    lck_mtx_lock(conn->mutex);
+    
     struct sockaddr_in* addr = (struct sockaddr_in*) to;
     inet_ntop(AF_INET, &addr->sin_addr, (char*)addstr, sizeof(addstr));
     proc_selfname((char*)name, sizeof(name));
@@ -79,6 +108,7 @@ static errno_t oxy_connect_out_func(void *cookie,
 
     lck_mtx_lock(g_mutex);
     if (g_ctl_connection.ref) {
+        g_ctl_connection.out_msg.cookie = cookie;
         g_ctl_connection.out_msg.pid = proc_selfpid();
         g_ctl_connection.out_msg.host = ntohl(addr->sin_addr.s_addr);
         g_ctl_connection.out_msg.port = ntohs(addr->sin_port);
@@ -89,6 +119,15 @@ static errno_t oxy_connect_out_func(void *cookie,
         }
     }
     lck_mtx_unlock(g_mutex);
+    
+    struct timespec t = { 5, 0 };
+    
+    if (msleep(conn, conn->mutex, 0, "connect", &t) != EWOULDBLOCK) {
+        printf("unexpected return from msleep\n");
+    }
+    
+    
+    lck_mtx_unlock(conn->mutex);
 
     return 0;
 }

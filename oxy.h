@@ -15,6 +15,7 @@
 
 
 struct outbound_connection {
+    long cookie;
     int pid;
     long host;
     short port;
