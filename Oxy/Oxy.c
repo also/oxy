@@ -12,6 +12,7 @@
 #include <sys/socket.h>
 #include <sys/kpi_socket.h>
 #include <sys/kpi_socketfilter.h>
+#include <sys/kern_control.h>
 #include <netinet/in.h>
 
 #include <libkern/OSMalloc.h>
@@ -24,6 +25,9 @@ kern_return_t Oxy_start(kmod_info_t * ki, void *d);
 kern_return_t Oxy_stop(kmod_info_t *ki, void *d);
 
 static OSMallocTag global_malloc_tag;
+
+static kern_ctl_ref gctl_ref;
+static boolean_t g_kern_ctl_registered = FALSE;
 
 enum filter_state {
     UNREGISTERED,
@@ -64,6 +68,15 @@ static errno_t oxy_connect_out_func(void *cookie,
     return 0;
 }
 
+
+static int ctl_connect(kern_ctl_ref ctl_ref, struct sockaddr_ctl *sac, void **unitinfo) {
+    return 0;
+}
+
+static errno_t ctl_disconnect(kern_ctl_ref ctl_ref, u_int32_t unit, void *unitinfo) {
+    return 0;
+}
+
 static struct sflt_filter TLsflt_filter_ip4 = {
 	OXY_SF_HANDLE,	/* sflt_handle - use a registered creator type - <http://developer.apple.com/datatype/> */
 	SFLT_GLOBAL,			/* sf_flags */
@@ -85,7 +98,20 @@ static struct sflt_filter TLsflt_filter_ip4 = {
 	NULL					/* sf_ioctl_func */
 };
 
-
+static struct kern_ctl_reg gctl_reg = {
+	OXY_BUNDLEID,				/* use a reverse dns name which includes a name unique to your comany */
+	0,						/* set to 0 for dynamically assigned control ID - CTL_FLAG_REG_ID_UNIT not set */
+	0,						/* ctl_unit - ignored when CTL_FLAG_REG_ID_UNIT not set */
+	CTL_FLAG_PRIVILEGED,	/* privileged access required to access this filter */
+	0,						/* use default send size buffer */
+	(8 * 1024),				/* Override receive buffer size */
+	ctl_connect,			/* Called when a connection request is accepted */
+	ctl_disconnect,			/* called when a connection becomes disconnected */
+	NULL,					/* ctl_send_func - handles data sent from the client to kernel control - which we do not support
+                             in this example */
+	NULL,				/* called when the user process makes the setsockopt call */
+	NULL					/* called when the user process makes the getsockopt call */
+};
 
 kern_return_t Oxy_start(kmod_info_t * ki, void *d)
 {
@@ -100,7 +126,6 @@ kern_return_t Oxy_start(kmod_info_t * ki, void *d)
     
     retval = sflt_register(&TLsflt_filter_ip4, PF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (retval == 0) {
-        printf("Oxy success sflt_register\n");
         global_filter_state = REGISTERED;
     }
     else {
@@ -108,12 +133,26 @@ kern_return_t Oxy_start(kmod_info_t * ki, void *d)
         goto bail;
     }
     
+    retval = ctl_register(&gctl_reg, &gctl_ref);
+    if (retval == 0) {
+        g_kern_ctl_registered = TRUE;
+    }
+    else {
+        printf("Oxy failure ctl_register\n");
+        goto bail;
+    }
+    
     return KERN_SUCCESS;
     
     bail:
+    // TODO what happens if any of these fail?
     if (global_filter_state == REGISTERED) {
         global_filter_state = UNREGISTERING;
         sflt_unregister(OXY_SF_HANDLE);
+    }
+    if (g_kern_ctl_registered) {
+        ctl_deregister(gctl_ref);
+        g_kern_ctl_registered = FALSE;
     }
     if (global_malloc_tag) {
         OSMalloc_Tagfree(global_malloc_tag);
@@ -140,6 +179,13 @@ kern_return_t Oxy_stop(kmod_info_t *ki, void *d)
     if (global_filter_state != UNREGISTERED) {
         printf("Oxy not unregistered yet\n");
         return KERN_FAILURE;
+    }
+    if (g_kern_ctl_registered) {
+        retval = ctl_deregister(gctl_ref);
+        if (retval != 0) {
+            printf("Oxy failure ctl_deregister\n");
+            return retval;
+        }
     }
     if (global_malloc_tag) {
         OSMalloc_Tagfree(global_malloc_tag);
