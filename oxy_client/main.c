@@ -14,6 +14,7 @@
 #include <sys/kern_control.h>
 #include <sys/sys_domain.h>
 #include <string.h>
+#include <errno.h>
 
 #include "../oxy.h"
 
@@ -35,7 +36,6 @@ int main(int argc, const char * argv[])
         printf("Is the Oxy KEXT loaded?\n");
 		exit(0);
 	}
-    printf("ctl_id: 0x%x for ctl_name: %s\n", ctl_info.ctl_id, ctl_info.ctl_name);
     
     bzero(&sc, sizeof(struct sockaddr_ctl));
 	sc.sc_len = sizeof(struct sockaddr_ctl);
@@ -46,6 +46,12 @@ int main(int argc, const char * argv[])
     
     if (connect(ctl_socket, (struct sockaddr *)&sc, sizeof(struct sockaddr_ctl))) {
 		perror("connect");
+        if (errno == EBUSY) {
+            printf("Only one connection allowed at a time.\n");
+        }
+        else if (errno == EPERM) {
+            printf("Needs to be run as root.\n");
+        }
 		exit(0);
 	}
     
