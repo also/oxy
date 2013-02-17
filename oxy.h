@@ -14,4 +14,10 @@
 #define OXY_SF_HANDLE 0x4F585859 // OXXY
 
 
+struct outbound_connection {
+    int pid;
+    long host;
+    short port;
+};
+
 #endif

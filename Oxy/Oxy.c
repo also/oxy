@@ -42,6 +42,7 @@ static lck_grp_t *g_mutex_grp = NULL;
 struct ctl_connection {
     kern_ctl_ref ref;
     u_int32_t unit;
+    struct outbound_connection out_msg;
 };
 
 static struct ctl_connection g_ctl_connection = {
@@ -76,6 +77,19 @@ static errno_t oxy_connect_out_func(void *cookie,
     proc_selfname((char*)name, sizeof(name));
     printf("Oxy connection: %s to %s:%d\n", name, addstr, ntohs(addr->sin_port));
 
+    lck_mtx_lock(g_mutex);
+    if (g_ctl_connection.ref) {
+        g_ctl_connection.out_msg.pid = proc_selfpid();
+        g_ctl_connection.out_msg.host = ntohl(addr->sin_addr.s_addr);
+        g_ctl_connection.out_msg.port = ntohs(addr->sin_port);
+        errno_t retval = ctl_enqueuedata(g_ctl_connection.ref, g_ctl_connection.unit, &g_ctl_connection.out_msg, sizeof(g_ctl_connection.out_msg), 0);
+        if (retval != 0) {
+            // TODO ummmm?
+            printf("Oxy failure ctl_enqueuedata\n");
+        }
+    }
+    lck_mtx_unlock(g_mutex);
+
     return 0;
 }
 
@@ -84,6 +98,7 @@ static errno_t ctl_connect(kern_ctl_ref ctl_ref, struct sockaddr_ctl *sac, void 
     errno_t retval = 0;
     printf("Oxy process with pid=%d connected\n", proc_selfpid());
 
+    // TODO reject connections if we're shutting down
     lck_mtx_lock(g_mutex);
     if (g_ctl_connection.ref) {
         // only one connection at a time, sorry
@@ -100,8 +115,10 @@ static errno_t ctl_connect(kern_ctl_ref ctl_ref, struct sockaddr_ctl *sac, void 
 static errno_t ctl_disconnect(kern_ctl_ref ctl_ref, u_int32_t unit, void *unitinfo) {
     printf("Oxy process with pid=%d disconnected\n", proc_selfpid());
     lck_mtx_lock(g_mutex);
-    g_ctl_connection.ref = NULL;
-    g_ctl_connection.unit = NULL;
+    if (ctl_ref == g_ctl_connection.ref && unit == g_ctl_connection.unit) {
+        g_ctl_connection.ref = NULL;
+        g_ctl_connection.unit = NULL;
+    }
     lck_mtx_unlock(g_mutex);
     return 0;
 }

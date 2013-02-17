@@ -14,6 +14,8 @@
 #include <sys/kern_control.h>
 #include <sys/sys_domain.h>
 #include <string.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
 #include <errno.h>
 
 #include "../oxy.h"
@@ -61,6 +63,15 @@ int main(int argc, const char * argv[])
 		exit(0);
     }
     
+    struct outbound_connection msg;
+
+    while (recv(ctl_socket, &msg, sizeof(msg), 0) == sizeof(msg)) {
+        unsigned char addstr[256];
+        struct in_addr addr = {htonl(msg.host)};
+        inet_ntop(AF_INET, &addr, (char*)addstr, sizeof(addstr));
+        printf("%d connecting to %s:%d\n", msg.pid, addstr, msg.port);
+    }
+
     close(ctl_socket);
     
     return 0;
