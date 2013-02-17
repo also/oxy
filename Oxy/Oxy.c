@@ -34,13 +34,23 @@ enum filter_state {
     UNREGISTERING
 };
 
-static enum filter_state global_filter_state = UNREGISTERED;
+static enum filter_state g_filter_state = UNREGISTERED;
 
 static lck_mtx_t *g_mutex = NULL;
 static lck_grp_t *g_mutex_grp = NULL;
 
+struct ctl_connection {
+    kern_ctl_ref ref;
+    u_int32_t unit;
+};
+
+static struct ctl_connection g_ctl_connection = {
+    NULL,
+    NULL
+};
+
 static void oxy_unregistered_func(sflt_handle handle) {
-    global_filter_state = UNREGISTERED;
+    g_filter_state = UNREGISTERED;
     printf("Oxy success sflt_unregister\n");
 }
 
@@ -70,13 +80,29 @@ static errno_t oxy_connect_out_func(void *cookie,
 }
 
 
-static int ctl_connect(kern_ctl_ref ctl_ref, struct sockaddr_ctl *sac, void **unitinfo) {
+static errno_t ctl_connect(kern_ctl_ref ctl_ref, struct sockaddr_ctl *sac, void **unitinfo) {
+    errno_t retval = 0;
     printf("Oxy process with pid=%d connected\n", proc_selfpid());
-    return 0;
+
+    lck_mtx_lock(g_mutex);
+    if (g_ctl_connection.ref) {
+        // only one connection at a time, sorry
+        retval = EBUSY;
+    }
+    else {
+        g_ctl_connection.ref = ctl_ref;
+        g_ctl_connection.unit = sac->sc_unit;
+    }
+    lck_mtx_unlock(g_mutex);
+    return retval;
 }
 
 static errno_t ctl_disconnect(kern_ctl_ref ctl_ref, u_int32_t unit, void *unitinfo) {
     printf("Oxy process with pid=%d disconnected\n", proc_selfpid());
+    lck_mtx_lock(g_mutex);
+    g_ctl_connection.ref = NULL;
+    g_ctl_connection.unit = NULL;
+    lck_mtx_unlock(g_mutex);
     return 0;
 }
 
@@ -123,8 +149,7 @@ static struct kern_ctl_reg gctl_reg = {
 	(8 * 1024),				/* Override receive buffer size */
 	ctl_connect,			/* Called when a connection request is accepted */
 	ctl_disconnect,			/* called when a connection becomes disconnected */
-	send_func,					/* ctl_send_func - handles data sent from the client to kernel control - which we do not support
-                             in this example */
+	send_func,					/* ctl_send_func - handles data sent from the client to kernel control */
 	NULL,				/* called when the user process makes the setsockopt call */
 	NULL					/* called when the user process makes the getsockopt call */
 };
@@ -178,7 +203,7 @@ kern_return_t Oxy_start(kmod_info_t * ki, void *d)
     
     retval = sflt_register(&TLsflt_filter_ip4, PF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (retval == 0) {
-        global_filter_state = REGISTERED;
+        g_filter_state = REGISTERED;
     }
     else {
         printf("Oxy failure sflt_register\n");
@@ -198,8 +223,8 @@ kern_return_t Oxy_start(kmod_info_t * ki, void *d)
     
     bail:
     // TODO what happens if any of these fail?
-    if (global_filter_state == REGISTERED) {
-        global_filter_state = UNREGISTERING;
+    if (g_filter_state == REGISTERED) {
+        g_filter_state = UNREGISTERING;
         sflt_unregister(OXY_SF_HANDLE);
     }
     if (g_kern_ctl_registered) {
@@ -217,18 +242,18 @@ kern_return_t Oxy_stop(kmod_info_t *ki, void *d)
 {
     errno_t retval;
     printf("Oxy_stop\n");
-    if (global_filter_state == REGISTERED) {
-        global_filter_state = UNREGISTERING;
+    if (g_filter_state == REGISTERED) {
+        g_filter_state = UNREGISTERING;
         printf("Oxy unregistering\n");
         retval = sflt_unregister(OXY_SF_HANDLE);
         if (retval != 0) {
             printf("WTF? sflt_unregister returned %d\n", retval);
             // FIXME is this right?
-            global_filter_state = REGISTERED;
+            g_filter_state = REGISTERED;
         }
         // note that we might be unregistered by now.
     }
-    if (global_filter_state != UNREGISTERED) {
+    if (g_filter_state != UNREGISTERED) {
         printf("Oxy not unregistered yet\n");
         return KERN_FAILURE;
     }
