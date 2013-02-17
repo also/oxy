@@ -15,6 +15,9 @@ kextutil -n -print-diagnostics /tmp/Oxy.kext
 # will return the necessary snippet
 ```
 
+Developing
+----------
+
 Network Kernel Extensions:
 https://developer.apple.com/library/mac/#documentation/Darwin/Conceptual/NKEConceptual/intro/intro.html
 

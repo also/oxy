@@ -44,7 +44,6 @@ static errno_t oxy_attach_func(void **cookie, socket_t so) {
 }
 
 static void oxy_detach_func(void *cookie, socket_t so) {
-    int pid = proc_selfpid();
 }
 
 static void oxy_notify_func(void *cookie, socket_t so, sflt_event_t event, void *param) {
@@ -52,15 +51,16 @@ static void oxy_notify_func(void *cookie, socket_t so, sflt_event_t event, void 
 }
 
 static errno_t oxy_connect_out_func(void *cookie,
-                                   socket_t so,
+                                    socket_t so,
                                     const struct sockaddr *to) {
     printf("Oxy oxy_connect_out_func!\n");
-    if (to->sa_family == AF_INET) {
-        unsigned char addstr[256];
-        struct sockaddr_in*  addr = (struct sockaddr_in*) to;
-        inet_ntop(AF_INET, &addr->sin_addr, (char*)addstr, sizeof(addstr));
-        printf("Oxy connection: %s:%d\n", addstr, ntohs(addr->sin_port));
-    }
+    unsigned char name[256];
+    unsigned char addstr[256];
+    struct sockaddr_in* addr = (struct sockaddr_in*) to;
+    inet_ntop(AF_INET, &addr->sin_addr, (char*)addstr, sizeof(addstr));
+    proc_selfname((char*)name, sizeof(name));
+    printf("Oxy connection: %s to %s:%d\n", name, addstr, ntohs(addr->sin_port));
+
     return 0;
 }
 
@@ -124,13 +124,17 @@ kern_return_t Oxy_start(kmod_info_t * ki, void *d)
 
 kern_return_t Oxy_stop(kmod_info_t *ki, void *d)
 {
-    int retval;
+    errno_t retval;
     printf("Oxy_stop\n");
     if (global_filter_state == REGISTERED) {
         global_filter_state = UNREGISTERING;
         printf("Oxy unregistering\n");
         retval = sflt_unregister(OXY_SF_HANDLE);
-        // FIXME handle unregister failure...
+        if (retval != 0) {
+            printf("WTF? sflt_unregister returned %d\n", retval);
+            // FIXME is this right?
+            global_filter_state = REGISTERED;
+        }
         // note that we might be unregistered by now.
     }
     if (global_filter_state != UNREGISTERED) {
