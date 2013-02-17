@@ -36,6 +36,8 @@ enum filter_state {
 
 static enum filter_state global_filter_state = UNREGISTERED;
 
+static lck_mtx_t *g_mutex = NULL;
+static lck_grp_t *g_mutex_grp = NULL;
 
 static void oxy_unregistered_func(sflt_handle handle) {
     global_filter_state = UNREGISTERED;
@@ -127,11 +129,47 @@ static struct kern_ctl_reg gctl_reg = {
 	NULL					/* called when the user process makes the getsockopt call */
 };
 
+static errno_t alloc_locks(void) {
+	errno_t			result = 0;
+
+	g_mutex_grp = lck_grp_alloc_init(OXY_BUNDLEID, LCK_GRP_ATTR_NULL);
+	if (g_mutex_grp == NULL) {
+		printf("error calling lck_grp_alloc_init\n");
+		result = ENOMEM;
+	}
+
+	if (result == 0) {
+		g_mutex = lck_mtx_alloc_init(g_mutex_grp, LCK_ATTR_NULL);
+		if (g_mutex == NULL) {
+			printf("error calling lck_mtx_alloc_init\n");
+			result = ENOMEM;
+		}
+	}
+
+	return result;
+}
+
+static void free_locks(void)
+{
+	if (g_mutex) {
+		lck_mtx_free(g_mutex, g_mutex_grp);
+		g_mutex = NULL;
+	}
+	if (g_mutex_grp) {
+		lck_grp_free(g_mutex_grp);
+		g_mutex_grp = NULL;
+	}
+}
+
 kern_return_t Oxy_start(kmod_info_t * ki, void *d)
 {
     int retval;
     
     printf("Oxy_start\n");
+    retval = alloc_locks();
+    if (retval) {
+        goto bail;
+    }
     global_malloc_tag = OSMalloc_Tagalloc(OXY_BUNDLEID, OSMT_DEFAULT);
     if (global_malloc_tag == NULL) {
         printf("Oxy failure OSMalloc_Tagalloc\n");
@@ -201,6 +239,9 @@ kern_return_t Oxy_stop(kmod_info_t *ki, void *d)
             return retval;
         }
     }
+
+    free_locks();
+
     if (global_malloc_tag) {
         OSMalloc_Tagfree(global_malloc_tag);
         printf("Oxy freed OSMalloc tag. All done.\n");
