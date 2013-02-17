@@ -37,6 +37,7 @@ enum filter_state {
 static enum filter_state g_filter_state = UNREGISTERED;
 
 static lck_mtx_t *g_mutex = NULL;
+static lck_mtx_t *g_pending_connection_list_mutex = NULL;
 static lck_grp_t *g_mutex_grp = NULL;
 
 struct ctl_connection {
@@ -49,6 +50,10 @@ struct connection {
     TAILQ_ENTRY(connection) link;
     lck_mtx_t *mutex;
 };
+
+TAILQ_HEAD(connection_list, connection);
+
+static struct connection_list g_pending_connection_list; // protected by g_pending_connection_list_mutex
 
 static struct ctl_connection g_ctl_connection = {
     NULL,
@@ -99,8 +104,6 @@ static errno_t oxy_connect_out_func(void *cookie,
     
     struct connection *conn = cookie;
     
-    lck_mtx_lock(conn->mutex);
-    
     struct sockaddr_in* addr = (struct sockaddr_in*) to;
     inet_ntop(AF_INET, &addr->sin_addr, (char*)addstr, sizeof(addstr));
     proc_selfname((char*)name, sizeof(name));
@@ -112,22 +115,46 @@ static errno_t oxy_connect_out_func(void *cookie,
         g_ctl_connection.out_msg.pid = proc_selfpid();
         g_ctl_connection.out_msg.host = ntohl(addr->sin_addr.s_addr);
         g_ctl_connection.out_msg.port = ntohs(addr->sin_port);
+
+        
+        struct timespec t = { 5, 0 };
+        
+        lck_mtx_lock(g_pending_connection_list_mutex);
+        TAILQ_INSERT_TAIL(&g_pending_connection_list, conn, link);
+        /*
+        int len = 0;
+        struct connection *c;
+        TAILQ_FOREACH(c, &g_pending_connection_list, link) {
+            len++;
+        }
+        printf("Oxy there are %d pending connections\n", len);
+         */
+        lck_mtx_unlock(g_pending_connection_list_mutex);
+
+        lck_mtx_lock(conn->mutex);
         errno_t retval = ctl_enqueuedata(g_ctl_connection.ref, g_ctl_connection.unit, &g_ctl_connection.out_msg, sizeof(g_ctl_connection.out_msg), 0);
+        lck_mtx_unlock(g_mutex);
+        
         if (retval != 0) {
             // TODO ummmm?
             printf("Oxy failure ctl_enqueuedata\n");
         }
+        
+        if (msleep(conn, conn->mutex, 0, "connect", &t) != EWOULDBLOCK) {
+            printf("unexpected return from msleep\n");
+        }
+        
+        
+        // TODO ... maybe we should do this when the client sends?
+        lck_mtx_lock(g_pending_connection_list_mutex);
+        TAILQ_REMOVE(&g_pending_connection_list, conn, link);
+        lck_mtx_unlock(g_pending_connection_list_mutex);
+    
+        lck_mtx_unlock(conn->mutex);
     }
-    lck_mtx_unlock(g_mutex);
-    
-    struct timespec t = { 5, 0 };
-    
-    if (msleep(conn, conn->mutex, 0, "connect", &t) != EWOULDBLOCK) {
-        printf("unexpected return from msleep\n");
+    else {
+        lck_mtx_unlock(g_mutex);
     }
-    
-    
-    lck_mtx_unlock(conn->mutex);
 
     return 0;
 }
@@ -211,23 +238,24 @@ static struct kern_ctl_reg gctl_reg = {
 };
 
 static errno_t alloc_locks(void) {
-	errno_t			result = 0;
-
 	g_mutex_grp = lck_grp_alloc_init(OXY_BUNDLEID, LCK_GRP_ATTR_NULL);
 	if (g_mutex_grp == NULL) {
 		printf("error calling lck_grp_alloc_init\n");
-		result = ENOMEM;
+		return ENOMEM;
 	}
+    
+    g_pending_connection_list_mutex = lck_mtx_alloc_init(g_mutex_grp, LCK_ATTR_NULL);
+    if (g_pending_connection_list_mutex == NULL) {
+		printf("error calling lck_grp_alloc_init\n");
+		return ENOMEM;
+    }
 
-	if (result == 0) {
-		g_mutex = lck_mtx_alloc_init(g_mutex_grp, LCK_ATTR_NULL);
-		if (g_mutex == NULL) {
-			printf("error calling lck_mtx_alloc_init\n");
-			result = ENOMEM;
-		}
+	g_mutex = lck_mtx_alloc_init(g_mutex_grp, LCK_ATTR_NULL);
+	if (g_mutex == NULL) {
+		printf("error calling lck_mtx_alloc_init\n");
+		return ENOMEM;
 	}
-
-	return result;
+    return 0;
 }
 
 static void free_locks(void)
@@ -236,6 +264,10 @@ static void free_locks(void)
 		lck_mtx_free(g_mutex, g_mutex_grp);
 		g_mutex = NULL;
 	}
+    if (g_pending_connection_list_mutex) {
+        lck_mtx_free(g_pending_connection_list_mutex, g_mutex_grp);
+        g_pending_connection_list_mutex = NULL;
+    }
 	if (g_mutex_grp) {
 		lck_grp_free(g_mutex_grp);
 		g_mutex_grp = NULL;
@@ -251,6 +283,9 @@ kern_return_t Oxy_start(kmod_info_t * ki, void *d)
     if (retval) {
         goto bail;
     }
+    
+    TAILQ_INIT(&g_pending_connection_list);
+    
     global_malloc_tag = OSMalloc_Tagalloc(OXY_BUNDLEID, OSMT_DEFAULT);
     if (global_malloc_tag == NULL) {
         printf("Oxy failure OSMalloc_Tagalloc\n");
