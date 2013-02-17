@@ -17,8 +17,7 @@
 
 #include <libkern/OSMalloc.h>
 
-#define OXY_BUNDLEID		"com.rberdeen.oxy.kext"
-#define OXY_SF_HANDLE 0x4F585859 // OXXY
+#include "oxy.h"
 
 
 kern_return_t Oxy_start(kmod_info_t * ki, void *d);
@@ -70,10 +69,25 @@ static errno_t oxy_connect_out_func(void *cookie,
 
 
 static int ctl_connect(kern_ctl_ref ctl_ref, struct sockaddr_ctl *sac, void **unitinfo) {
+    printf("Oxy process with pid=%d connected\n", proc_selfpid());
     return 0;
 }
 
 static errno_t ctl_disconnect(kern_ctl_ref ctl_ref, u_int32_t unit, void *unitinfo) {
+    printf("Oxy process with pid=%d disconnected\n", proc_selfpid());
+    return 0;
+}
+
+static errno_t send_func(kern_ctl_ref kctlref, u_int32_t unit, void *unitinfo, mbuf_t m, int flags) {
+    size_t len = mbuf_len(m);
+    printf("Oxy process with pid=%d sent %d bytes of data\n", proc_selfpid(), len);
+    unsigned char data[256];
+    if (sizeof(data) < len) {
+        len = sizeof(data);
+    }
+    mbuf_copydata(m, 0, len, data);
+    data[len - 1] = NULL; // MAKE SURE ITS TERMINATED
+    printf("data: %s\n", data);
     return 0;
 }
 
@@ -107,7 +121,7 @@ static struct kern_ctl_reg gctl_reg = {
 	(8 * 1024),				/* Override receive buffer size */
 	ctl_connect,			/* Called when a connection request is accepted */
 	ctl_disconnect,			/* called when a connection becomes disconnected */
-	NULL,					/* ctl_send_func - handles data sent from the client to kernel control - which we do not support
+	send_func,					/* ctl_send_func - handles data sent from the client to kernel control - which we do not support
                              in this example */
 	NULL,				/* called when the user process makes the setsockopt call */
 	NULL					/* called when the user process makes the getsockopt call */
