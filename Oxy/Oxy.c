@@ -19,9 +19,12 @@
 
 #include "oxy.h"
 
-static OSMallocTag global_malloc_tag;
+// the number of seconds to wait for the management client to decide what to do with a connection
+#define CONNECT_WAIT_TIMEOUT 5
 
-static kern_ctl_ref gctl_ref;
+static OSMallocTag g_malloc_tag;
+
+static kern_ctl_ref g_ctl_ref;
 static boolean_t g_kern_ctl_registered = FALSE;
 
 enum filter_state {
@@ -82,13 +85,13 @@ static void sf_unregistered(sflt_handle handle) {
 }
 
 static errno_t sf_attach(void **cookie, socket_t so) {
-    struct connection *conn = (struct connection *)OSMalloc(sizeof (struct connection), global_malloc_tag);
+    struct connection *conn = (struct connection *) OSMalloc(sizeof(struct connection), g_malloc_tag);
     if (conn == NULL) {
         return ENOBUFS;
     }
     conn->mutex = lck_mtx_alloc_init(g_mutex_grp, LCK_ATTR_NULL);
     if (conn->mutex == NULL) {
-        OSFree(conn, sizeof(struct connection), global_malloc_tag);
+        OSFree(conn, sizeof(struct connection), g_malloc_tag);
         return ENOMEM;
     }
     *cookie = conn;
@@ -136,9 +139,7 @@ static errno_t sf_getoption(void *cookie, socket_t so, sockopt_t opt) {
     }
 }
 
-static errno_t sf_connect_out(void *cookie,
-                                    socket_t so,
-                                    const struct sockaddr *to) {
+static errno_t sf_connect_out(void *cookie, socket_t so, const struct sockaddr *to) {
     int result = 0;
 
     struct connection *conn = cookie;
@@ -153,7 +154,7 @@ static errno_t sf_connect_out(void *cookie,
         conn->opts.host = ntohl(addr->sin_addr.s_addr);
         conn->opts.port = ntohs(addr->sin_port);
 
-        struct timespec t = { 5, 0 };
+        struct timespec t = { CONNECT_WAIT_TIMEOUT, 0 };
 
         lck_mtx_lock(g_pending_connection_list_mutex);
         TAILQ_INSERT_TAIL(&g_pending_connection_list, conn, link);
@@ -178,7 +179,10 @@ static errno_t sf_connect_out(void *cookie,
          specifically,
          @param flags Send flags. CTL_DATA_NOWAKEUP is currently the only supported flag.
          is totally wrong.
+         Without the CTL_DATA_EOR flag, this will drop messages when called multiple times
+         between control client recv() calls.
          */
+        // TODO do we need to check the queue length?
         errno_t retval = ctl_enqueuedata(g_ctl_connection.ref, g_ctl_connection.unit, &conn->opts, sizeof(conn->opts), CTL_DATA_EOR);
         lck_mtx_unlock(g_mutex);
 
@@ -196,7 +200,6 @@ static errno_t sf_connect_out(void *cookie,
                 printf("WTF? how did we wake up?\n");
             }
             else {
-                printf("Oxy works! %p\n", conn);
                 if (conn->opts.flags != OXY_CONNECTION_IGNORE) {
                     if (conn->opts.flags == OXY_CONNECTION_REJECT) {
                         result = ECONNREFUSED;
@@ -250,11 +253,7 @@ static errno_t ctl_connect(kern_ctl_ref ctl_ref, struct sockaddr_ctl *sac, void 
     return retval;
 }
 
-static errno_t ctl_getopt(kern_ctl_ref ctl_ref, u_int32_t unit,
-                          void *unitinfo,
-                          int opt,
-                          void *data,
-                          size_t *len) {
+static errno_t ctl_getopt(kern_ctl_ref ctl_ref, u_int32_t unit, void *unitinfo, int opt, void *data, size_t *len) {
     size_t  valsize;
     void    *buf;
 
@@ -319,7 +318,7 @@ static errno_t ctl_send(kern_ctl_ref kctlref, u_int32_t unit, void *unitinfo, mb
 
 #pragma mark -
 
-static struct sflt_filter TLsflt_filter_ip4 = {
+static struct sflt_filter g_filter_reg = {
     OXY_SF_HANDLE,   /* sflt_handle - use a registered creator type - <http://developer.apple.com/datatype/> */
     SFLT_GLOBAL,     /* sf_flags */
     OXY_BUNDLEID,    /* sf_name - cannot be nil else param err results */
@@ -340,7 +339,7 @@ static struct sflt_filter TLsflt_filter_ip4 = {
     NULL             /* sf_ioctl_func */
 };
 
-static struct kern_ctl_reg gctl_reg = {
+static struct kern_ctl_reg g_ctl_reg = {
     OXY_BUNDLEID,       /* use a reverse dns name which includes a name unique to your comany */
     0,                  /* set to 0 for dynamically assigned control ID - CTL_FLAG_REG_ID_UNIT not set */
     0,                  /* ctl_unit - ignored when CTL_FLAG_REG_ID_UNIT not set */
@@ -404,13 +403,13 @@ kern_return_t Oxy_start(kmod_info_t * ki, void *d) {
 
     TAILQ_INIT(&g_pending_connection_list);
 
-    global_malloc_tag = OSMalloc_Tagalloc(OXY_BUNDLEID, OSMT_DEFAULT);
-    if (global_malloc_tag == NULL) {
+    g_malloc_tag = OSMalloc_Tagalloc(OXY_BUNDLEID, OSMT_DEFAULT);
+    if (g_malloc_tag == NULL) {
         printf("Oxy failure OSMalloc_Tagalloc\n");
         goto bail;
     }
 
-    retval = sflt_register(&TLsflt_filter_ip4, PF_INET, SOCK_STREAM, IPPROTO_TCP);
+    retval = sflt_register(&g_filter_reg, PF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (retval == 0) {
         g_filter_state = REGISTERED;
     }
@@ -419,7 +418,7 @@ kern_return_t Oxy_start(kmod_info_t * ki, void *d) {
         goto bail;
     }
 
-    retval = ctl_register(&gctl_reg, &gctl_ref);
+    retval = ctl_register(&g_ctl_reg, &g_ctl_ref);
     if (retval == 0) {
         g_kern_ctl_registered = TRUE;
     }
@@ -437,18 +436,17 @@ kern_return_t Oxy_start(kmod_info_t * ki, void *d) {
         sflt_unregister(OXY_SF_HANDLE);
     }
     if (g_kern_ctl_registered) {
-        ctl_deregister(gctl_ref);
+        ctl_deregister(g_ctl_ref);
         g_kern_ctl_registered = FALSE;
     }
-    if (global_malloc_tag) {
-        OSMalloc_Tagfree(global_malloc_tag);
-        global_malloc_tag = NULL;
+    if (g_malloc_tag) {
+        OSMalloc_Tagfree(g_malloc_tag);
+        g_malloc_tag = NULL;
     }
     return KERN_FAILURE;
 }
 
-kern_return_t Oxy_stop(kmod_info_t *ki, void *d)
-{
+kern_return_t Oxy_stop(kmod_info_t *ki, void *d) {
     errno_t retval;
     printf("Oxy_stop\n");
     if (g_filter_state == REGISTERED) {
@@ -467,7 +465,7 @@ kern_return_t Oxy_stop(kmod_info_t *ki, void *d)
         return KERN_FAILURE;
     }
     if (g_kern_ctl_registered) {
-        retval = ctl_deregister(gctl_ref);
+        retval = ctl_deregister(g_ctl_ref);
         if (retval != 0) {
             printf("Oxy failure ctl_deregister\n");
             return retval;
@@ -476,10 +474,10 @@ kern_return_t Oxy_stop(kmod_info_t *ki, void *d)
 
     free_locks();
 
-    if (global_malloc_tag) {
-        OSMalloc_Tagfree(global_malloc_tag);
+    if (g_malloc_tag) {
+        OSMalloc_Tagfree(g_malloc_tag);
         printf("Oxy freed OSMalloc tag. All done.\n");
-        global_malloc_tag = NULL;
+        g_malloc_tag = NULL;
     }
     return KERN_SUCCESS;
 }
