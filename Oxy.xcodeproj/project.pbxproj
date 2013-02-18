@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		9429899016D0BF7300431744 /* main.c in Sources */ = {isa = PBXBuildFile; fileRef = 9429898F16D0BF7300431744 /* main.c */; };
+		94619E5C16D22DBE006EEB9B /* main.c in Sources */ = {isa = PBXBuildFile; fileRef = 94619E5B16D22DBD006EEB9B /* main.c */; };
 		94AA013916BCC97B00AB5443 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 94AA013716BCC97B00AB5443 /* InfoPlist.strings */; };
 		94AA013B16BCC97B00AB5443 /* Oxy.c in Sources */ = {isa = PBXBuildFile; fileRef = 94AA013A16BCC97B00AB5443 /* Oxy.c */; };
 /* End PBXBuildFile section */
@@ -22,12 +23,23 @@
 			);
 			runOnlyForDeploymentPostprocessing = 1;
 		};
+		94619E5716D22DBD006EEB9B /* CopyFiles */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = /usr/share/man/man1/;
+			dstSubfolderSpec = 0;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 1;
+		};
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		9429898D16D0BF7300431744 /* oxy_client */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = oxy_client; sourceTree = BUILT_PRODUCTS_DIR; };
 		9429898F16D0BF7300431744 /* main.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = main.c; sourceTree = "<group>"; };
 		9429899616D0C15400431744 /* oxy.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = oxy.h; sourceTree = "<group>"; };
+		94619E5916D22DBD006EEB9B /* oxy_test */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = oxy_test; sourceTree = BUILT_PRODUCTS_DIR; };
+		94619E5B16D22DBD006EEB9B /* main.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = main.c; sourceTree = "<group>"; };
 		94AA012F16BCC97B00AB5443 /* Oxy.kext */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = Oxy.kext; sourceTree = BUILT_PRODUCTS_DIR; };
 		94AA013316BCC97B00AB5443 /* Kernel.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Kernel.framework; path = System/Library/Frameworks/Kernel.framework; sourceTree = SDKROOT; };
 		94AA013616BCC97B00AB5443 /* Oxy-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Oxy-Info.plist"; sourceTree = "<group>"; };
@@ -38,6 +50,13 @@
 
 /* Begin PBXFrameworksBuildPhase section */
 		9429898A16D0BF7300431744 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		94619E5616D22DBD006EEB9B /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -62,12 +81,21 @@
 			path = oxy_client;
 			sourceTree = "<group>";
 		};
+		94619E5A16D22DBD006EEB9B /* oxy_test */ = {
+			isa = PBXGroup;
+			children = (
+				94619E5B16D22DBD006EEB9B /* main.c */,
+			);
+			path = oxy_test;
+			sourceTree = "<group>";
+		};
 		94AA012216BCC97B00AB5443 = {
 			isa = PBXGroup;
 			children = (
 				9429899616D0C15400431744 /* oxy.h */,
 				94AA013416BCC97B00AB5443 /* Oxy */,
 				9429898E16D0BF7300431744 /* oxy_client */,
+				94619E5A16D22DBD006EEB9B /* oxy_test */,
 				94AA013116BCC97B00AB5443 /* Frameworks */,
 				94AA013016BCC97B00AB5443 /* Products */,
 			);
@@ -78,6 +106,7 @@
 			children = (
 				94AA012F16BCC97B00AB5443 /* Oxy.kext */,
 				9429898D16D0BF7300431744 /* oxy_client */,
+				94619E5916D22DBD006EEB9B /* oxy_test */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -147,6 +176,23 @@
 			productReference = 9429898D16D0BF7300431744 /* oxy_client */;
 			productType = "com.apple.product-type.tool";
 		};
+		94619E5816D22DBD006EEB9B /* oxy_test */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 94619E5F16D22DBE006EEB9B /* Build configuration list for PBXNativeTarget "oxy_test" */;
+			buildPhases = (
+				94619E5516D22DBD006EEB9B /* Sources */,
+				94619E5616D22DBD006EEB9B /* Frameworks */,
+				94619E5716D22DBD006EEB9B /* CopyFiles */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = oxy_test;
+			productName = oxy_test;
+			productReference = 94619E5916D22DBD006EEB9B /* oxy_test */;
+			productType = "com.apple.product-type.tool";
+		};
 		94AA012E16BCC97B00AB5443 /* Oxy */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 94AA013F16BCC97B00AB5443 /* Build configuration list for PBXNativeTarget "Oxy" */;
@@ -189,6 +235,7 @@
 			targets = (
 				94AA012E16BCC97B00AB5443 /* Oxy */,
 				9429898C16D0BF7300431744 /* oxy_client */,
+				94619E5816D22DBD006EEB9B /* oxy_test */,
 			);
 		};
 /* End PBXProject section */
@@ -220,6 +267,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				9429899016D0BF7300431744 /* main.c in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		94619E5516D22DBD006EEB9B /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				94619E5C16D22DBE006EEB9B /* main.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -257,6 +312,28 @@
 			name = Debug;
 		};
 		9429899516D0BF7300431744 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Release;
+		};
+		94619E6016D22DBE006EEB9B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Debug;
+		};
+		94619E6116D22DBE006EEB9B /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CLANG_ENABLE_OBJC_ARC = YES;
@@ -362,6 +439,15 @@
 			buildConfigurations = (
 				9429899416D0BF7300431744 /* Debug */,
 				9429899516D0BF7300431744 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		94619E5F16D22DBE006EEB9B /* Build configuration list for PBXNativeTarget "oxy_test" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				94619E6016D22DBE006EEB9B /* Debug */,
+				94619E6116D22DBE006EEB9B /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 		};
