@@ -99,14 +99,14 @@ static void sf_detach(void *cookie, socket_t so) {
     struct connection *conn = cookie;
 
     lck_mtx_free(conn->mutex, g_mutex_grp);
-    OSFree(conn, sizeof(struct connection), global_malloc_tag);
+    OSFree(conn, sizeof(struct connection), g_malloc_tag);
 }
 
 static void sf_notify(void *cookie, socket_t so, sflt_event_t event, void *param) {
 
 }
 
-errno_t sf_getoption(void *cookie, socket_t so, sockopt_t opt) {
+static errno_t sf_getoption(void *cookie, socket_t so, sockopt_t opt) {
     // TODO is this bad? is there something better to use as a level?
     if (sockopt_level(opt) != SOL_OXY) {
         return 0;
