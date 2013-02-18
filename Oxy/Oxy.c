@@ -111,6 +111,36 @@ static void sf_notify(void *cookie, socket_t so, sflt_event_t event, void *param
 
 }
 
+errno_t sf_getoption(void *cookie, socket_t so, sockopt_t opt) {
+    // TODO is this bad? is there something better to use as a level?
+    if (sockopt_level(opt) != SOL_OXY) {
+        return 0;
+    }
+    else {
+        size_t valsize;
+        void *buf;
+        switch (sockopt_name(opt)) {
+            case OXY_OPT_VERSION:
+                valsize = sizeof(uint16_t);
+                uint16_t version = OXY_VERSION;
+                buf = &version;
+                break;
+
+            default:
+                return ENOTSUP;
+                break;
+        }
+
+        errno_t error = sockopt_copyout(opt, buf, valsize);
+        if (error == 0) {
+            return EJUSTRETURN;
+        }
+        else {
+            return error;
+        }
+    }
+}
+
 static errno_t sf_connect_out(void *cookie,
                                     socket_t so,
                                     const struct sockaddr *to) {
@@ -316,7 +346,7 @@ static struct sflt_filter TLsflt_filter_ip4 = {
     sf_connect_out,  /* sf_connect_out_func */
     NULL,            /* sf_bind_func */
     NULL,            /* sf_setoption_func */
-    NULL,            /* sf_getoption_func */
+    sf_getoption,    /* sf_getoption_func */
     NULL,            /* sf_listen_func */
     NULL             /* sf_ioctl_func */
 };

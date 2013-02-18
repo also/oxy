@@ -15,6 +15,7 @@
 
 #define OXY_BUNDLEID		"com.rberdeen.oxy.kext"
 #define OXY_SF_HANDLE 0x4F585859 // OXXY
+#define SOL_OXY 0x4F585859
 
 
 struct outbound_connection {
