@@ -19,9 +19,6 @@
 
 #include "oxy.h"
 
-kern_return_t Oxy_start(kmod_info_t * ki, void *d);
-kern_return_t Oxy_stop(kmod_info_t *ki, void *d);
-
 static OSMallocTag global_malloc_tag;
 
 static kern_ctl_ref gctl_ref;
@@ -61,6 +58,23 @@ static struct ctl_connection g_ctl_connection = {
     NULL
 };
 
+#pragma mark -
+
+static struct connection *find_connection(struct connection *cookie) {
+    struct connection *conn;
+    struct connection *conn_next;
+
+    for (conn = TAILQ_FIRST(&g_pending_connection_list); conn != NULL; conn = conn_next) {
+        if (conn == cookie) {
+            return conn;
+        }
+        conn_next = TAILQ_NEXT(conn, link);
+    }
+    return NULL;
+}
+
+#pragma mark -
+#pragma mark Socket Filter Callbacks
 
 static void sf_unregistered(sflt_handle handle) {
     g_filter_state = UNREGISTERED;
@@ -196,6 +210,9 @@ static errno_t sf_connect_out(void *cookie,
     return result;
 }
 
+#pragma mark -
+#pragma mark Kernel Control Callbacks
+
 static errno_t ctl_connect(kern_ctl_ref ctl_ref, struct sockaddr_ctl *sac, void **unitinfo) {
     errno_t retval = 0;
     printf("Oxy control process with pid=%d connected\n", proc_selfpid());
@@ -225,19 +242,6 @@ static errno_t ctl_disconnect(kern_ctl_ref ctl_ref, u_int32_t unit, void *unitin
     return 0;
 }
 
-static struct connection *find_connection(struct connection *cookie) {
-    struct connection *conn;
-    struct connection *conn_next;
-
-    for (conn = TAILQ_FIRST(&g_pending_connection_list); conn != NULL; conn = conn_next) {
-        if (conn == cookie) {
-            return conn;
-        }
-        conn_next = TAILQ_NEXT(conn, link);
-    }
-    return NULL;
-}
-
 static errno_t ctl_send(kern_ctl_ref kctlref, u_int32_t unit, void *unitinfo, mbuf_t m, int flags) {
     size_t len = mbuf_len(m);
     // TODO i'm pretty sure this doesn't need to lock because we only allow a single connection at a time...
@@ -265,6 +269,8 @@ static errno_t ctl_send(kern_ctl_ref kctlref, u_int32_t unit, void *unitinfo, mb
     }
     return 0;
 }
+
+#pragma mark -
 
 static struct sflt_filter TLsflt_filter_ip4 = {
     OXY_SF_HANDLE,   /* sflt_handle - use a registered creator type - <http://developer.apple.com/datatype/> */
@@ -337,8 +343,10 @@ static void free_locks(void) {
     }
 }
 
-kern_return_t Oxy_start(kmod_info_t * ki, void *d)
-{
+#pragma mark -
+#pragma mark KEXT Lifecycle
+
+kern_return_t Oxy_start(kmod_info_t * ki, void *d) {
     int retval;
 
     printf("Oxy_start\n");
