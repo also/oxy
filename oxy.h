@@ -11,6 +11,7 @@
 
 #include <netinet/in.h>
 
+#define OXY_VERSION 1
 
 #define OXY_BUNDLEID		"com.rberdeen.oxy.kext"
 #define OXY_SF_HANDLE 0x4F585859 // OXXY
@@ -27,5 +28,7 @@ struct outbound_connection {
 #define OXY_CONNECTION_IGNORE 0
 #define OXY_CONNECTION_REJECT 1
 #define OXY_CONNECTION_MODIFY 2
+
+#define OXY_OPT_VERSION 0
 
 #endif

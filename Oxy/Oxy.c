@@ -231,6 +231,34 @@ static errno_t ctl_connect(kern_ctl_ref ctl_ref, struct sockaddr_ctl *sac, void 
     return retval;
 }
 
+static errno_t ctl_getopt(kern_ctl_ref ctl_ref, u_int32_t unit,
+                          void *unitinfo,
+                          int opt,
+                          void *data,
+                          size_t *len) {
+    size_t  valsize;
+    void    *buf;
+
+    switch (opt) {
+        case OXY_OPT_VERSION:
+            valsize = sizeof(uint16_t);
+            uint16_t version = OXY_VERSION;
+            buf = &version;
+            break;
+
+        default:
+            return ENOTSUP;
+            break;
+    }
+
+    if (data != NULL) {
+        *len = lmin(*len, valsize);
+        bcopy(buf, data, *len);
+    }
+
+    return 0;
+}
+
 static errno_t ctl_disconnect(kern_ctl_ref ctl_ref, u_int32_t unit, void *unitinfo) {
     printf("Oxy control process with pid=%d disconnected\n", proc_selfpid());
     lck_mtx_lock(g_mutex);
@@ -304,7 +332,7 @@ static struct kern_ctl_reg gctl_reg = {
     ctl_disconnect,     /* called when a connection becomes disconnected */
     ctl_send,           /* ctl_ctl_send - handles data sent from the client to kernel control */
     NULL,               /* called when the user process makes the setsockopt call */
-    NULL                /* called when the user process makes the getsockopt call */
+    ctl_getopt          /* called when the user process makes the getsockopt call */
 };
 
 static errno_t alloc_locks(void) {

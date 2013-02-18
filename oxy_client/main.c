@@ -55,7 +55,19 @@ int main(int argc, const char * argv[])
         }
 		exit(0);
 	}
-    
+
+    uint16_t version;
+    socklen_t size = sizeof(version);
+    if (getsockopt(ctl_socket, SYSPROTO_CONTROL, OXY_OPT_VERSION, &version, &size)) {
+        perror("getsockopt OXY_OPT_VERSION");
+        exit(0);
+    }
+
+    if (version != OXY_VERSION) {
+        printf("Oxy client version %d doesn't match server version %d\n", OXY_VERSION, version);
+        exit(1);
+    }
+
     struct outbound_connection msg;
 
     while (recv(ctl_socket, &msg, sizeof(msg), 0) == sizeof(msg)) {
