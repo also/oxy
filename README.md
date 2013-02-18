@@ -3,8 +3,8 @@ Oxy
 
 Oxy lets you do weird things to OS X sockets. Right now, this includes __watching__, __modifying__, and __rejecting__ outgoing `connect()` calls.
 
-Check out this hottness:
-------------------------
+Check out this hotness
+----------------------
 
 ```python
 import oxypy

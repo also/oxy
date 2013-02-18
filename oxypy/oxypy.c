@@ -123,6 +123,7 @@ PyMODINIT_FUNC init_oxypy(void) {
   g_socket_error = PyObject_GetAttrString(socket_module, "error");
   if (!g_socket_error)
     return;
+  // TODO Py_DECREF socket_module?
 
   m = Py_InitModule("_oxypy", OxyMethods);
   if (m == NULL)

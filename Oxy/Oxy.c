@@ -98,11 +98,6 @@ static errno_t sf_attach(void **cookie, socket_t so) {
 static void sf_detach(void *cookie, socket_t so) {
     struct connection *conn = cookie;
 
-    if (!conn) {
-        // is this possible?
-        return;
-    }
-
     lck_mtx_free(conn->mutex, g_mutex_grp);
     OSFree(conn, sizeof(struct connection), global_malloc_tag);
 }
@@ -144,16 +139,11 @@ errno_t sf_getoption(void *cookie, socket_t so, sockopt_t opt) {
 static errno_t sf_connect_out(void *cookie,
                                     socket_t so,
                                     const struct sockaddr *to) {
-    unsigned char name[256];
-    unsigned char addstr[256];
-
     int result = 0;
 
     struct connection *conn = cookie;
 
     struct sockaddr_in* addr = (struct sockaddr_in*) to;
-    inet_ntop(AF_INET, &addr->sin_addr, (char*)addstr, sizeof(addstr));
-    proc_selfname((char*)name, sizeof(name));
 
     lck_mtx_lock(g_mutex);
     if (g_ctl_connection.ref) {
@@ -224,7 +214,6 @@ static errno_t sf_connect_out(void *cookie,
         else {
             printf("Oxy unexpected return from msleep %p\n", conn);
         }
-
 
         // TODO ... maybe we should do this when the client sends?
         lck_mtx_lock(g_pending_connection_list_mutex);

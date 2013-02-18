@@ -19,8 +19,7 @@
 
 #include "../oxy.h"
 
-int main(int argc, const char * argv[])
-{
+int main(int argc, const char * argv[]) {
     int ctl_socket = 0;
     struct ctl_info ctl_info;
     struct sockaddr_ctl sc;
