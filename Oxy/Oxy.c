@@ -83,18 +83,18 @@ static errno_t oxy_attach_func(void **cookie, socket_t so) {
 
 static void oxy_detach_func(void *cookie, socket_t so) {
     struct connection *conn = cookie;
-    
+
     if (!conn) {
         // is this possible?
         return;
     }
-    
+
     lck_mtx_free(conn->mutex, g_mutex_grp);
     OSFree(conn, sizeof(struct connection), global_malloc_tag);
 }
 
 static void oxy_notify_func(void *cookie, socket_t so, sflt_event_t event, void *param) {
-    
+
 }
 
 static errno_t oxy_connect_out_func(void *cookie,
@@ -102,12 +102,12 @@ static errno_t oxy_connect_out_func(void *cookie,
                                     const struct sockaddr *to) {
     unsigned char name[256];
     unsigned char addstr[256];
-    
+
     int result = 0;
-    
+
     struct connection *conn = cookie;
-    
-    
+
+
     struct sockaddr_in* addr = (struct sockaddr_in*) to;
     inet_ntop(AF_INET, &addr->sin_addr, (char*)addstr, sizeof(addstr));
     proc_selfname((char*)name, sizeof(name));
@@ -119,9 +119,9 @@ static errno_t oxy_connect_out_func(void *cookie,
         conn->opts.pid = proc_selfpid();
         conn->opts.host = ntohl(addr->sin_addr.s_addr);
         conn->opts.port = ntohs(addr->sin_port);
-        
+
         struct timespec t = { 5, 0 };
-        
+
         lck_mtx_lock(g_pending_connection_list_mutex);
         TAILQ_INSERT_TAIL(&g_pending_connection_list, conn, link);
         /*
@@ -135,7 +135,7 @@ static errno_t oxy_connect_out_func(void *cookie,
         lck_mtx_unlock(g_pending_connection_list_mutex);
 
         lck_mtx_lock(conn->mutex);
-        
+
         /*
          the flags for this one are a little confusing...
          not sure if i'm getting this right
@@ -148,14 +148,14 @@ static errno_t oxy_connect_out_func(void *cookie,
          */
         errno_t retval = ctl_enqueuedata(g_ctl_connection.ref, g_ctl_connection.unit, &conn->opts, sizeof(conn->opts), CTL_DATA_EOR);
         lck_mtx_unlock(g_mutex);
-        
+
         if (retval != 0) {
             // TODO ummmm?
             printf("Oxy failure ctl_enqueuedata\n");
         }
-        
+
         conn->ready = FALSE;
-        
+
         retval = msleep(conn, conn->mutex, 0, "connect", &t);
         if (retval == 0) {
             if (conn->ready != TRUE) {
@@ -181,13 +181,13 @@ static errno_t oxy_connect_out_func(void *cookie,
         else {
             printf("Oxy unexpected return from msleep %p\n", conn);
         }
-        
-        
+
+
         // TODO ... maybe we should do this when the client sends?
         lck_mtx_lock(g_pending_connection_list_mutex);
         TAILQ_REMOVE(&g_pending_connection_list, conn, link);
         lck_mtx_unlock(g_pending_connection_list_mutex);
-    
+
         lck_mtx_unlock(conn->mutex);
     }
     else {
@@ -230,7 +230,7 @@ static errno_t ctl_disconnect(kern_ctl_ref ctl_ref, u_int32_t unit, void *unitin
 static struct connection *find_connection(struct connection *cookie) {
     struct connection *conn;
     struct connection *conn_next;
-    
+
     for (conn = TAILQ_FIRST(&g_pending_connection_list); conn != NULL; conn = conn_next) {
         if (conn == cookie) {
             return conn;
@@ -246,7 +246,7 @@ static errno_t send_func(kern_ctl_ref kctlref, u_int32_t unit, void *unitinfo, m
     // but maybe a connection can send even if connect failed?
     if (len == sizeof(g_ctl_connection.in_msg)) {
         mbuf_copydata(m, 0, len, &g_ctl_connection.in_msg);
-        
+
         lck_mtx_lock(g_pending_connection_list_mutex);
         struct connection *conn = find_connection(g_ctl_connection.in_msg.cookie);
         lck_mtx_unlock(g_pending_connection_list_mutex);
@@ -269,95 +269,94 @@ static errno_t send_func(kern_ctl_ref kctlref, u_int32_t unit, void *unitinfo, m
 }
 
 static struct sflt_filter TLsflt_filter_ip4 = {
-	OXY_SF_HANDLE,	/* sflt_handle - use a registered creator type - <http://developer.apple.com/datatype/> */
-	SFLT_GLOBAL,			/* sf_flags */
-	OXY_BUNDLEID,				/* sf_name - cannot be nil else param err results */
-	oxy_unregistered_func,	/* sf_unregistered_func */
-	oxy_attach_func,		/* sf_attach_func - cannot be nil else param err results */
-	oxy_detach_func,			/* sf_detach_func - cannot be nil else param err results */
-	oxy_notify_func,			/* sf_notify_func */
-	NULL,					/* sf_getpeername_func */
-	NULL,					/* sf_getsockname_func */
-	NULL,			/* sf_data_in_func */
-	NULL,			/* sf_data_out_func */
-	NULL,		/* sf_connect_in_func */
-	oxy_connect_out_func,		/* sf_connect_out_func */
-	NULL,				/* sf_bind_func */
-	NULL,		/* sf_setoption_func */
-	NULL,		/* sf_getoption_func */
-	NULL,			/* sf_listen_func */
-	NULL					/* sf_ioctl_func */
+    OXY_SF_HANDLE,        /* sflt_handle - use a registered creator type - <http://developer.apple.com/datatype/> */
+    SFLT_GLOBAL,          /* sf_flags */
+    OXY_BUNDLEID,         /* sf_name - cannot be nil else param err results */
+    oxy_unregistered_func,/* sf_unregistered_func */
+    oxy_attach_func,      /* sf_attach_func - cannot be nil else param err results */
+    oxy_detach_func,      /* sf_detach_func - cannot be nil else param err results */
+    oxy_notify_func,      /* sf_notify_func */
+    NULL,                 /* sf_getpeername_func */
+    NULL,                 /* sf_getsockname_func */
+    NULL,                 /* sf_data_in_func */
+    NULL,                 /* sf_data_out_func */
+    NULL,                 /* sf_connect_in_func */
+    oxy_connect_out_func, /* sf_connect_out_func */
+    NULL,                 /* sf_bind_func */
+    NULL,                 /* sf_setoption_func */
+    NULL,                 /* sf_getoption_func */
+    NULL,                 /* sf_listen_func */
+    NULL                  /* sf_ioctl_func */
 };
 
 static struct kern_ctl_reg gctl_reg = {
-	OXY_BUNDLEID,				/* use a reverse dns name which includes a name unique to your comany */
-	0,						/* set to 0 for dynamically assigned control ID - CTL_FLAG_REG_ID_UNIT not set */
-	0,						/* ctl_unit - ignored when CTL_FLAG_REG_ID_UNIT not set */
-	CTL_FLAG_PRIVILEGED,	/* privileged access required to access this filter */
-	0,						/* use default send size buffer */
-	(8 * 1024),				/* Override receive buffer size */
-	ctl_connect,			/* Called when a connection request is accepted */
-	ctl_disconnect,			/* called when a connection becomes disconnected */
-	send_func,					/* ctl_send_func - handles data sent from the client to kernel control */
-	NULL,				/* called when the user process makes the setsockopt call */
-	NULL					/* called when the user process makes the getsockopt call */
+    OXY_BUNDLEID,       /* use a reverse dns name which includes a name unique to your comany */
+    0,                  /* set to 0 for dynamically assigned control ID - CTL_FLAG_REG_ID_UNIT not set */
+    0,                  /* ctl_unit - ignored when CTL_FLAG_REG_ID_UNIT not set */
+    CTL_FLAG_PRIVILEGED,/* privileged access required to access this filter */
+    0,                  /* use default send size buffer */
+    (8 * 1024),         /* Override receive buffer size */
+    ctl_connect,        /* Called when a connection request is accepted */
+    ctl_disconnect,     /* called when a connection becomes disconnected */
+    send_func,          /* ctl_send_func - handles data sent from the client to kernel control */
+    NULL,               /* called when the user process makes the setsockopt call */
+    NULL                /* called when the user process makes the getsockopt call */
 };
 
 static errno_t alloc_locks(void) {
-	g_mutex_grp = lck_grp_alloc_init(OXY_BUNDLEID, LCK_GRP_ATTR_NULL);
-	if (g_mutex_grp == NULL) {
-		printf("error calling lck_grp_alloc_init\n");
-		return ENOMEM;
-	}
-    
-    g_pending_connection_list_mutex = lck_mtx_alloc_init(g_mutex_grp, LCK_ATTR_NULL);
-    if (g_pending_connection_list_mutex == NULL) {
-		printf("error calling lck_grp_alloc_init\n");
-		return ENOMEM;
+    g_mutex_grp = lck_grp_alloc_init(OXY_BUNDLEID, LCK_GRP_ATTR_NULL);
+    if (g_mutex_grp == NULL) {
+        printf("error calling lck_grp_alloc_init\n");
+        return ENOMEM;
     }
 
-	g_mutex = lck_mtx_alloc_init(g_mutex_grp, LCK_ATTR_NULL);
-	if (g_mutex == NULL) {
-		printf("error calling lck_mtx_alloc_init\n");
-		return ENOMEM;
-	}
+    g_pending_connection_list_mutex = lck_mtx_alloc_init(g_mutex_grp, LCK_ATTR_NULL);
+    if (g_pending_connection_list_mutex == NULL) {
+        printf("error calling lck_grp_alloc_init\n");
+        return ENOMEM;
+    }
+
+    g_mutex = lck_mtx_alloc_init(g_mutex_grp, LCK_ATTR_NULL);
+    if (g_mutex == NULL) {
+        printf("error calling lck_mtx_alloc_init\n");
+        return ENOMEM;
+    }
     return 0;
 }
 
-static void free_locks(void)
-{
-	if (g_mutex) {
-		lck_mtx_free(g_mutex, g_mutex_grp);
-		g_mutex = NULL;
-	}
+static void free_locks(void) {
+    if (g_mutex) {
+        lck_mtx_free(g_mutex, g_mutex_grp);
+        g_mutex = NULL;
+    }
     if (g_pending_connection_list_mutex) {
         lck_mtx_free(g_pending_connection_list_mutex, g_mutex_grp);
         g_pending_connection_list_mutex = NULL;
     }
-	if (g_mutex_grp) {
-		lck_grp_free(g_mutex_grp);
-		g_mutex_grp = NULL;
-	}
+    if (g_mutex_grp) {
+        lck_grp_free(g_mutex_grp);
+        g_mutex_grp = NULL;
+    }
 }
 
 kern_return_t Oxy_start(kmod_info_t * ki, void *d)
 {
     int retval;
-    
+
     printf("Oxy_start\n");
     retval = alloc_locks();
     if (retval) {
         goto bail;
     }
-    
+
     TAILQ_INIT(&g_pending_connection_list);
-    
+
     global_malloc_tag = OSMalloc_Tagalloc(OXY_BUNDLEID, OSMT_DEFAULT);
     if (global_malloc_tag == NULL) {
         printf("Oxy failure OSMalloc_Tagalloc\n");
         goto bail;
     }
-    
+
     retval = sflt_register(&TLsflt_filter_ip4, PF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (retval == 0) {
         g_filter_state = REGISTERED;
@@ -366,7 +365,7 @@ kern_return_t Oxy_start(kmod_info_t * ki, void *d)
         printf("Oxy failure sflt_register\n");
         goto bail;
     }
-    
+
     retval = ctl_register(&gctl_reg, &gctl_ref);
     if (retval == 0) {
         g_kern_ctl_registered = TRUE;
@@ -375,9 +374,9 @@ kern_return_t Oxy_start(kmod_info_t * ki, void *d)
         printf("Oxy failure ctl_register\n");
         goto bail;
     }
-    
+
     return KERN_SUCCESS;
-    
+
     bail:
     // TODO what happens if any of these fail?
     if (g_filter_state == REGISTERED) {
