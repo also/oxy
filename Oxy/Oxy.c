@@ -103,7 +103,10 @@ static errno_t oxy_connect_out_func(void *cookie,
     unsigned char name[256];
     unsigned char addstr[256];
     
+    int result = 0;
+    
     struct connection *conn = cookie;
+    
     
     struct sockaddr_in* addr = (struct sockaddr_in*) to;
     inet_ntop(AF_INET, &addr->sin_addr, (char*)addstr, sizeof(addstr));
@@ -112,6 +115,7 @@ static errno_t oxy_connect_out_func(void *cookie,
     lck_mtx_lock(g_mutex);
     if (g_ctl_connection.ref) {
         conn->opts.cookie = cookie;
+        conn->opts.flags = OXY_CONNECTION_IGNORE;
         conn->opts.pid = proc_selfpid();
         conn->opts.host = ntohl(addr->sin_addr.s_addr);
         conn->opts.port = ntohs(addr->sin_port);
@@ -160,6 +164,15 @@ static errno_t oxy_connect_out_func(void *cookie,
             }
             else {
                 printf("Oxy works! %p\n", conn);
+                if (conn->opts.flags != OXY_CONNECTION_IGNORE) {
+                    if (conn->opts.flags == OXY_CONNECTION_REJECT) {
+                        result = ECONNREFUSED;
+                    }
+                    else if (conn->opts.flags == OXY_CONNECTION_MODIFY) {
+                        addr->sin_port = htons(conn->opts.port);
+                        addr->sin_addr.s_addr = htonl(conn->opts.host);
+                    }
+                }
             }
         }
         else if (retval == EWOULDBLOCK) {
@@ -181,7 +194,7 @@ static errno_t oxy_connect_out_func(void *cookie,
         lck_mtx_unlock(g_mutex);
     }
 
-    return 0;
+    return result;
 }
 
 

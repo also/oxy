@@ -15,11 +15,15 @@
 
 
 struct outbound_connection {
-    long cookie;
+    void *cookie;
     int flags;
     int pid;
-    long host;
-    short port;
+    in_addr_t host;
+    in_port_t port;
 };
+
+#define OXY_CONNECTION_IGNORE 0
+#define OXY_CONNECTION_REJECT 1
+#define OXY_CONNECTION_MODIFY 2
 
 #endif

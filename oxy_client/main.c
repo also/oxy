@@ -63,8 +63,18 @@ int main(int argc, const char * argv[])
         unsigned char addstr[256];
         struct in_addr addr = {htonl(msg.host)};
         inet_ntop(AF_INET, &addr, (char*)addstr, sizeof(addstr));
-        printf("%p: %d connecting to %s:%d\n", msg.cookie, msg.pid, addstr, msg.port);
+        printf("pid %d connecting to %s:%d\n", msg.pid, addstr, msg.port);
         
+        if (msg.host == 2905464893 && msg.port == 80) {
+            printf("blocking connection to www.ryanberdeen.com:80\n");
+            msg.flags = OXY_CONNECTION_REJECT;
+        }
+        if (msg.host == 134744072 && msg.port == 22) {
+            printf("for some reason you are trying to ssh into google's dns server. how about www.ryanberdeen.com instead?\n");
+            msg.flags = OXY_CONNECTION_MODIFY;
+            msg.host = 2905464893;
+        }
+
         if (send(ctl_socket, &msg, sizeof(msg), 0) == -1) {
             perror("send");
             exit(0);
