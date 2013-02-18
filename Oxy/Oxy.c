@@ -19,7 +19,6 @@
 
 #include "oxy.h"
 
-
 kern_return_t Oxy_start(kmod_info_t * ki, void *d);
 kern_return_t Oxy_stop(kmod_info_t *ki, void *d);
 
@@ -62,12 +61,13 @@ static struct ctl_connection g_ctl_connection = {
     NULL
 };
 
-static void oxy_unregistered_func(sflt_handle handle) {
+
+static void sf_unregistered(sflt_handle handle) {
     g_filter_state = UNREGISTERED;
     printf("Oxy success sflt_unregister\n");
 }
 
-static errno_t oxy_attach_func(void **cookie, socket_t so) {
+static errno_t sf_attach(void **cookie, socket_t so) {
     struct connection *conn = (struct connection *)OSMalloc(sizeof (struct connection), global_malloc_tag);
     if (conn == NULL) {
         return ENOBUFS;
@@ -81,7 +81,7 @@ static errno_t oxy_attach_func(void **cookie, socket_t so) {
     return 0;
 }
 
-static void oxy_detach_func(void *cookie, socket_t so) {
+static void sf_detach(void *cookie, socket_t so) {
     struct connection *conn = cookie;
 
     if (!conn) {
@@ -93,11 +93,11 @@ static void oxy_detach_func(void *cookie, socket_t so) {
     OSFree(conn, sizeof(struct connection), global_malloc_tag);
 }
 
-static void oxy_notify_func(void *cookie, socket_t so, sflt_event_t event, void *param) {
+static void sf_notify(void *cookie, socket_t so, sflt_event_t event, void *param) {
 
 }
 
-static errno_t oxy_connect_out_func(void *cookie,
+static errno_t sf_connect_out(void *cookie,
                                     socket_t so,
                                     const struct sockaddr *to) {
     unsigned char name[256];
@@ -106,7 +106,6 @@ static errno_t oxy_connect_out_func(void *cookie,
     int result = 0;
 
     struct connection *conn = cookie;
-
 
     struct sockaddr_in* addr = (struct sockaddr_in*) to;
     inet_ntop(AF_INET, &addr->sin_addr, (char*)addstr, sizeof(addstr));
@@ -197,7 +196,6 @@ static errno_t oxy_connect_out_func(void *cookie,
     return result;
 }
 
-
 static errno_t ctl_connect(kern_ctl_ref ctl_ref, struct sockaddr_ctl *sac, void **unitinfo) {
     errno_t retval = 0;
     printf("Oxy control process with pid=%d connected\n", proc_selfpid());
@@ -240,7 +238,7 @@ static struct connection *find_connection(struct connection *cookie) {
     return NULL;
 }
 
-static errno_t send_func(kern_ctl_ref kctlref, u_int32_t unit, void *unitinfo, mbuf_t m, int flags) {
+static errno_t ctl_send(kern_ctl_ref kctlref, u_int32_t unit, void *unitinfo, mbuf_t m, int flags) {
     size_t len = mbuf_len(m);
     // TODO i'm pretty sure this doesn't need to lock because we only allow a single connection at a time...
     // but maybe a connection can send even if connect failed?
@@ -269,24 +267,24 @@ static errno_t send_func(kern_ctl_ref kctlref, u_int32_t unit, void *unitinfo, m
 }
 
 static struct sflt_filter TLsflt_filter_ip4 = {
-    OXY_SF_HANDLE,        /* sflt_handle - use a registered creator type - <http://developer.apple.com/datatype/> */
-    SFLT_GLOBAL,          /* sf_flags */
-    OXY_BUNDLEID,         /* sf_name - cannot be nil else param err results */
-    oxy_unregistered_func,/* sf_unregistered_func */
-    oxy_attach_func,      /* sf_attach_func - cannot be nil else param err results */
-    oxy_detach_func,      /* sf_detach_func - cannot be nil else param err results */
-    oxy_notify_func,      /* sf_notify_func */
-    NULL,                 /* sf_getpeername_func */
-    NULL,                 /* sf_getsockname_func */
-    NULL,                 /* sf_data_in_func */
-    NULL,                 /* sf_data_out_func */
-    NULL,                 /* sf_connect_in_func */
-    oxy_connect_out_func, /* sf_connect_out_func */
-    NULL,                 /* sf_bind_func */
-    NULL,                 /* sf_setoption_func */
-    NULL,                 /* sf_getoption_func */
-    NULL,                 /* sf_listen_func */
-    NULL                  /* sf_ioctl_func */
+    OXY_SF_HANDLE,   /* sflt_handle - use a registered creator type - <http://developer.apple.com/datatype/> */
+    SFLT_GLOBAL,     /* sf_flags */
+    OXY_BUNDLEID,    /* sf_name - cannot be nil else param err results */
+    sf_unregistered, /* sf_unregistered_func */
+    sf_attach,       /* sf_attach_func - cannot be nil else param err results */
+    sf_detach,       /* sf_detach_func - cannot be nil else param err results */
+    sf_notify,       /* sf_notify_func */
+    NULL,            /* sf_getpeername_func */
+    NULL,            /* sf_getsockname_func */
+    NULL,            /* sf_data_in_func */
+    NULL,            /* sf_data_out_func */
+    NULL,            /* sf_connect_in_func */
+    sf_connect_out,  /* sf_connect_out_func */
+    NULL,            /* sf_bind_func */
+    NULL,            /* sf_setoption_func */
+    NULL,            /* sf_getoption_func */
+    NULL,            /* sf_listen_func */
+    NULL             /* sf_ioctl_func */
 };
 
 static struct kern_ctl_reg gctl_reg = {
@@ -298,7 +296,7 @@ static struct kern_ctl_reg gctl_reg = {
     (8 * 1024),         /* Override receive buffer size */
     ctl_connect,        /* Called when a connection request is accepted */
     ctl_disconnect,     /* called when a connection becomes disconnected */
-    send_func,          /* ctl_send_func - handles data sent from the client to kernel control */
+    ctl_send,           /* ctl_ctl_send - handles data sent from the client to kernel control */
     NULL,               /* called when the user process makes the setsockopt call */
     NULL                /* called when the user process makes the getsockopt call */
 };
