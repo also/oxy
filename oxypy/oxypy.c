@@ -13,6 +13,7 @@
 #include "../oxy.h"
 
 static int g_socket = -1;
+static PyObject * g_socket_error;
 
 static int ctl_connect() {
   struct ctl_info ctl_info;
@@ -24,16 +25,14 @@ static int ctl_connect() {
 
   g_socket = socket(PF_SYSTEM, SOCK_DGRAM, SYSPROTO_CONTROL);
   if (g_socket < 0) {
-    perror("socket SYSPROTO_CONTROL");
     return -1;
   }
   bzero(&ctl_info, sizeof(struct ctl_info));
   strcpy(ctl_info.ctl_name, OXY_BUNDLEID);
   if (ioctl(g_socket, CTLIOCGINFO, &ctl_info) == -1) {
-    perror("ioctl CTLIOCGINFO");
     return -1;
   }
-    
+
   bzero(&sc, sizeof(struct sockaddr_ctl));
   sc.sc_len = sizeof(struct sockaddr_ctl);
   sc.sc_family = AF_SYSTEM;
@@ -42,20 +41,32 @@ static int ctl_connect() {
   sc.sc_unit = 0;
 
   if (connect(g_socket, (struct sockaddr *)&sc, sizeof(struct sockaddr_ctl))) {
-    perror("connect");
     return -1;
   }
   return 0;
 }
 
 static PyObject * oxypy_connect(PyObject *self, PyObject *args) {
-  return Py_BuildValue("i", ctl_connect());
+  ssize_t result = ctl_connect();
+  if (result) {
+    return PyErr_SetFromErrno(g_socket_error);
+  }
+  else {
+    Py_INCREF(Py_None);
+    return Py_None;
+  }
 }
 
 static PyObject * oxypy_recv(PyObject *self, PyObject *args) {
   struct outbound_connection msg;
 
-  if (recv(g_socket, &msg, sizeof(msg), 0) != sizeof(msg)) {
+  ssize_t result = recv(g_socket, &msg, sizeof(msg), 0);
+
+  if (result < 0) {
+    return PyErr_SetFromErrno(g_socket_error);
+  }
+  else if (result != sizeof(msg)) {
+    // TODO this is a problem
     Py_INCREF(Py_None);
     return Py_None;
   }
@@ -70,21 +81,27 @@ static PyObject * oxypy_send(PyObject *self, PyObject *args) {
     return NULL;
   }
   else {
-    int result = send(g_socket, &msg, sizeof(msg), 0);
-    return Py_BuildValue("i", result);
+    ssize_t result = send(g_socket, &msg, sizeof(msg), 0);
+    if (result < 0) {
+      return PyErr_SetFromErrno(g_socket_error);
+    }
+    else {
+      // FIXME ensure all bytes were sent
+      Py_INCREF(Py_None);
+      return Py_None;
+    }
   }
 }
 
 static PyObject * oxypy_close(PyObject *self, PyObject *args) {
   int result;
-  if (g_socket < 0) {
-    result = -1;
+  result = close(g_socket);
+  g_socket = -1;
+  if (result) {
+    return PyErr_SetFromErrno(g_socket_error);
   }
-  else {
-    result = close(g_socket);
-    g_socket = -1;
-  }
-  return Py_BuildValue("i", result);
+  Py_INCREF(Py_None);
+  return Py_None;
 }
 
 static PyMethodDef OxyMethods[] = {
@@ -99,9 +116,17 @@ static PyMethodDef OxyMethods[] = {
 PyMODINIT_FUNC init_oxypy(void) {
   PyObject *m;
 
+  PyObject *socket_module = PyImport_ImportModule("socket");
+  if (!socket_module)
+    return;
+
+  g_socket_error = PyObject_GetAttrString(socket_module, "error");
+  if (!g_socket_error)
+    return;
+
   m = Py_InitModule("_oxypy", OxyMethods);
   if (m == NULL)
-      return;
+    return;
   PyModule_AddIntConstant(m, "CONNECTION_IGNORE", OXY_CONNECTION_IGNORE);
   PyModule_AddIntConstant(m, "CONNECTION_REJECT", OXY_CONNECTION_REJECT);
   PyModule_AddIntConstant(m, "CONNECTION_MODIFY", OXY_CONNECTION_MODIFY);
