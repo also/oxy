@@ -1,6 +1,36 @@
 Oxy
 ===
 
+Oxy lets you do weird things to OS X sockets. Right now, this includes __watching__, __modifying__, and __rejecting__ outgoing `connect()` calls.
+
+Check out this hottness:
+------------------------
+
+```python
+import oxypy
+
+GOOGLE = oxypy.aton('8.8.8.8')
+RYAN = oxypy.aton('173.45.224.61')
+
+oxypy.connect()
+
+while True:
+  r = oxypy.recv_request()
+  print "pid %d connecting to %s:%d" % (r.pid, oxypy.ntoa(r.host), r.port)
+
+  if r.host == GOOGLE and r.port == 22:
+    print "what are you doing?"
+    r.modify(host=RYAN)
+  elif r.host == RYAN:
+    print "rejecting connection to www.ryanberdeen.com"
+    r.reject()
+  else:
+    r.allow()
+```
+
+Developing
+----------
+
 ```bash
 xcodebuild -configuration Debug
 # this builds build/Debug/Oxy.kext
@@ -14,9 +44,6 @@ kextutil -n -print-diagnostics /tmp/Oxy.kext
 # kextlibs -xml build/Debug/Oxy.kext
 # will return the necessary snippet
 ```
-
-Developing
-----------
 
 Network Kernel Extensions:
 https://developer.apple.com/library/mac/#documentation/Darwin/Conceptual/NKEConceptual/intro/intro.html

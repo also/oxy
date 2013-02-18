@@ -45,7 +45,7 @@ static int ctl_connect() {
     perror("connect");
     return -1;
   }
-  return 1;
+  return 0;
 }
 
 static PyObject * oxypy_connect(PyObject *self, PyObject *args) {
@@ -88,21 +88,22 @@ static PyObject * oxypy_close(PyObject *self, PyObject *args) {
 }
 
 static PyMethodDef OxyMethods[] = {
-    {"connect",  oxypy_connect, METH_NOARGS, "Connects to Oxy."},
-    {"send",  oxypy_send, METH_VARARGS, "Send a message to Oxy."},
-    {"recv",  oxypy_recv, METH_NOARGS, "Receive a message from Oxy."},
-    {"close",  oxypy_close, METH_NOARGS, "Closes connection to Oxy."},
+  {"connect",  oxypy_connect, METH_NOARGS, "Connects to Oxy."},
+  {"send",  oxypy_send, METH_VARARGS, "Send a message to Oxy."},
+  {"recv",  oxypy_recv, METH_NOARGS, "Receive a message from Oxy."},
+  {"close",  oxypy_close, METH_NOARGS, "Closes connection to Oxy."},
 
-    {NULL, NULL, 0, NULL}        /* Sentinel */
+  {NULL, NULL, 0, NULL}        /* Sentinel */
 };
 
-PyMODINIT_FUNC
-initoxypy(void)
-{
-    PyObject *m;
+PyMODINIT_FUNC init_oxypy(void) {
+  PyObject *m;
 
-    m = Py_InitModule("oxypy", OxyMethods);
-    if (m == NULL)
-        return;
+  m = Py_InitModule("_oxypy", OxyMethods);
+  if (m == NULL)
+      return;
+  PyModule_AddIntConstant(m, "CONNECTION_IGNORE", OXY_CONNECTION_IGNORE);
+  PyModule_AddIntConstant(m, "CONNECTION_REJECT", OXY_CONNECTION_REJECT);
+  PyModule_AddIntConstant(m, "CONNECTION_MODIFY", OXY_CONNECTION_MODIFY);
 }
 
