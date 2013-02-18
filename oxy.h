@@ -9,6 +9,8 @@
 #ifndef Oxy_oxy_h
 #define Oxy_oxy_h
 
+#include <netinet/in.h>
+
 
 #define OXY_BUNDLEID		"com.rberdeen.oxy.kext"
 #define OXY_SF_HANDLE 0x4F585859 // OXXY

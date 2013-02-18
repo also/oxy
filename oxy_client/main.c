@@ -15,7 +15,6 @@
 #include <sys/sys_domain.h>
 #include <string.h>
 #include <arpa/inet.h>
-#include <netinet/in.h>
 #include <errno.h>
 
 #include "../oxy.h"
