@@ -57,12 +57,6 @@ int main(int argc, const char * argv[])
 		exit(0);
 	}
     
-    char message[] = "Hello, Oxy!\n";
-    if (send(ctl_socket, message, sizeof(message), 0) == -1) {
-        perror("send");
-		exit(0);
-    }
-    
     struct outbound_connection msg;
 
     while (recv(ctl_socket, &msg, sizeof(msg), 0) == sizeof(msg)) {
