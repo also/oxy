@@ -47,7 +47,11 @@ static int ctl_connect() {
 }
 
 static PyObject * oxypy_connect(PyObject *self, PyObject *args) {
-  ssize_t result = ctl_connect();
+  ssize_t result;
+  Py_BEGIN_ALLOW_THREADS
+  result = ctl_connect();
+  Py_END_ALLOW_THREADS
+
   if (result) {
     return PyErr_SetFromErrno(g_socket_error);
   }
@@ -59,8 +63,11 @@ static PyObject * oxypy_connect(PyObject *self, PyObject *args) {
 
 static PyObject * oxypy_recv(PyObject *self, PyObject *args) {
   struct outbound_connection msg;
+  ssize_t result;
 
-  ssize_t result = recv(g_socket, &msg, sizeof(msg), 0);
+  Py_BEGIN_ALLOW_THREADS
+  result = recv(g_socket, &msg, sizeof(msg), 0);
+  Py_END_ALLOW_THREADS
 
   if (result < 0) {
     return PyErr_SetFromErrno(g_socket_error);
@@ -81,7 +88,11 @@ static PyObject * oxypy_send(PyObject *self, PyObject *args) {
     return NULL;
   }
   else {
-    ssize_t result = send(g_socket, &msg, sizeof(msg), 0);
+    ssize_t result;
+    Py_BEGIN_ALLOW_THREADS
+    result = send(g_socket, &msg, sizeof(msg), 0);
+    Py_END_ALLOW_THREADS
+
     if (result < 0) {
       return PyErr_SetFromErrno(g_socket_error);
     }
@@ -95,7 +106,10 @@ static PyObject * oxypy_send(PyObject *self, PyObject *args) {
 
 static PyObject * oxypy_close(PyObject *self, PyObject *args) {
   int result;
+  Py_BEGIN_ALLOW_THREADS
   result = close(g_socket);
+  Py_END_ALLOW_THREADS
+
   g_socket = -1;
   if (result) {
     return PyErr_SetFromErrno(g_socket_error);
