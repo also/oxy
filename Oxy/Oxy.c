@@ -43,12 +43,14 @@ static lck_grp_t *g_mutex_grp = NULL;
 struct ctl_connection {
     kern_ctl_ref ref;
     u_int32_t unit;
-    struct outbound_connection out_msg;
+    struct outbound_connection in_msg;
 };
 
 struct connection {
     TAILQ_ENTRY(connection) link;
     lck_mtx_t *mutex;
+    boolean_t ready;
+    struct outbound_connection opts;
 };
 
 TAILQ_HEAD(connection_list, connection);
@@ -98,7 +100,6 @@ static void oxy_notify_func(void *cookie, socket_t so, sflt_event_t event, void 
 static errno_t oxy_connect_out_func(void *cookie,
                                     socket_t so,
                                     const struct sockaddr *to) {
-    printf("Oxy oxy_connect_out_func!\n");
     unsigned char name[256];
     unsigned char addstr[256];
     
@@ -107,15 +108,13 @@ static errno_t oxy_connect_out_func(void *cookie,
     struct sockaddr_in* addr = (struct sockaddr_in*) to;
     inet_ntop(AF_INET, &addr->sin_addr, (char*)addstr, sizeof(addstr));
     proc_selfname((char*)name, sizeof(name));
-    printf("Oxy connection: %s to %s:%d\n", name, addstr, ntohs(addr->sin_port));
 
     lck_mtx_lock(g_mutex);
     if (g_ctl_connection.ref) {
-        g_ctl_connection.out_msg.cookie = cookie;
-        g_ctl_connection.out_msg.pid = proc_selfpid();
-        g_ctl_connection.out_msg.host = ntohl(addr->sin_addr.s_addr);
-        g_ctl_connection.out_msg.port = ntohs(addr->sin_port);
-
+        conn->opts.cookie = cookie;
+        conn->opts.pid = proc_selfpid();
+        conn->opts.host = ntohl(addr->sin_addr.s_addr);
+        conn->opts.port = ntohs(addr->sin_port);
         
         struct timespec t = { 5, 0 };
         
@@ -132,7 +131,18 @@ static errno_t oxy_connect_out_func(void *cookie,
         lck_mtx_unlock(g_pending_connection_list_mutex);
 
         lck_mtx_lock(conn->mutex);
-        errno_t retval = ctl_enqueuedata(g_ctl_connection.ref, g_ctl_connection.unit, &g_ctl_connection.out_msg, sizeof(g_ctl_connection.out_msg), 0);
+        
+        /*
+         the flags for this one are a little confusing...
+         not sure if i'm getting this right
+         http://lists.apple.com/archives/darwin-kernel/2008/Aug/msg00012.html
+         http://lists.apple.com/archives/darwin-kernel/2007/Oct/msg00018.html
+         http://lists.apple.com/archives/darwin-kernel/2012/Aug/msg00041.html
+         specifically,
+         @param flags Send flags. CTL_DATA_NOWAKEUP is currently the only supported flag.
+         is totally wrong.
+         */
+        errno_t retval = ctl_enqueuedata(g_ctl_connection.ref, g_ctl_connection.unit, &conn->opts, sizeof(conn->opts), CTL_DATA_EOR);
         lck_mtx_unlock(g_mutex);
         
         if (retval != 0) {
@@ -140,8 +150,23 @@ static errno_t oxy_connect_out_func(void *cookie,
             printf("Oxy failure ctl_enqueuedata\n");
         }
         
-        if (msleep(conn, conn->mutex, 0, "connect", &t) != EWOULDBLOCK) {
-            printf("unexpected return from msleep\n");
+        conn->ready = FALSE;
+        
+        retval = msleep(conn, conn->mutex, 0, "connect", &t);
+        if (retval == 0) {
+            if (conn->ready != TRUE) {
+                // TODO maybe we need to loop...don't think so
+                printf("WTF? how did we wake up?\n");
+            }
+            else {
+                printf("Oxy works! %p\n", conn);
+            }
+        }
+        else if (retval == EWOULDBLOCK) {
+            printf("Oxy timed out waiting for response from client %p\n", conn);
+        }
+        else {
+            printf("Oxy unexpected return from msleep %p\n", conn);
         }
         
         
@@ -162,7 +187,7 @@ static errno_t oxy_connect_out_func(void *cookie,
 
 static errno_t ctl_connect(kern_ctl_ref ctl_ref, struct sockaddr_ctl *sac, void **unitinfo) {
     errno_t retval = 0;
-    printf("Oxy process with pid=%d connected\n", proc_selfpid());
+    printf("Oxy control process with pid=%d connected\n", proc_selfpid());
 
     // TODO reject connections if we're shutting down
     lck_mtx_lock(g_mutex);
@@ -179,7 +204,7 @@ static errno_t ctl_connect(kern_ctl_ref ctl_ref, struct sockaddr_ctl *sac, void 
 }
 
 static errno_t ctl_disconnect(kern_ctl_ref ctl_ref, u_int32_t unit, void *unitinfo) {
-    printf("Oxy process with pid=%d disconnected\n", proc_selfpid());
+    printf("Oxy control process with pid=%d disconnected\n", proc_selfpid());
     lck_mtx_lock(g_mutex);
     if (ctl_ref == g_ctl_connection.ref && unit == g_ctl_connection.unit) {
         g_ctl_connection.ref = NULL;
@@ -189,16 +214,44 @@ static errno_t ctl_disconnect(kern_ctl_ref ctl_ref, u_int32_t unit, void *unitin
     return 0;
 }
 
+static struct connection *find_connection(struct connection *cookie) {
+    struct connection *conn;
+    struct connection *conn_next;
+    
+    for (conn = TAILQ_FIRST(&g_pending_connection_list); conn != NULL; conn = conn_next) {
+        if (conn == cookie) {
+            return conn;
+        }
+        conn_next = TAILQ_NEXT(conn, link);
+    }
+    return NULL;
+}
+
 static errno_t send_func(kern_ctl_ref kctlref, u_int32_t unit, void *unitinfo, mbuf_t m, int flags) {
     size_t len = mbuf_len(m);
-    printf("Oxy process with pid=%d sent %d bytes of data\n", proc_selfpid(), len);
-    unsigned char data[256];
-    if (sizeof(data) < len) {
-        len = sizeof(data);
+    // TODO i'm pretty sure this doesn't need to lock because we only allow a single connection at a time...
+    // but maybe a connection can send even if connect failed?
+    if (len == sizeof(g_ctl_connection.in_msg)) {
+        mbuf_copydata(m, 0, len, &g_ctl_connection.in_msg);
+        
+        lck_mtx_lock(g_pending_connection_list_mutex);
+        struct connection *conn = find_connection(g_ctl_connection.in_msg.cookie);
+        lck_mtx_unlock(g_pending_connection_list_mutex);
+        if (conn == NULL) {
+            printf("Oxy recieved invalid connection cookie\n");
+        }
+        else {
+            lck_mtx_lock(conn->mutex);
+            memcpy(&conn->opts, &g_ctl_connection.in_msg, sizeof(g_ctl_connection.in_msg));
+            conn->ready = TRUE;
+            wakeup(conn);
+            // fuck yeah
+            lck_mtx_unlock(conn->mutex);
+        }
     }
-    mbuf_copydata(m, 0, len, data);
-    data[len - 1] = NULL; // MAKE SURE ITS TERMINATED
-    printf("data: %s\n", data);
+    else {
+        printf("Oxy recieved invalid control message\n");
+    }
     return 0;
 }
 
